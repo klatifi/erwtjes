@@ -1,32 +1,28 @@
 <#
 .SYNOPSIS
-  PowerShell adaptation of WinPEAS.exe / WinPeas.bat
+  PowerShell adaptation of P.E.A.S
 .DESCRIPTION
   For the legal enumeration of windows based computers that you either own or are approved to run this script on
 .EXAMPLE
   # Default - normal operation with username/password audit in drives/registry
-  .\winPeas.ps1
+  .\erwtje.ps1
 
   # Include Excel files in search: .xls, .xlsx, .xlsm
-  .\winPeas.ps1 -Excel
+  .\erwtje.ps1 -Excel
 
   # Full audit - normal operation with APIs / Keys / Tokens
   ## This will produce false positives ## 
-  .\winPeas.ps1 -FullCheck 
+  .\erwtje.ps1 -FullCheck 
 
   # Add Time stamps to each command
-  .\winPeas.ps1 -TimeStamp
+  .\erwtje.ps1 -TimeStamp
 
 .NOTES
-  Version:                    1.3
-  PEASS-ng Original Author:   PEASS-ng
-  winPEAS.ps1 Author:         @RandolphConley
-  Creation Date:              10/4/2022
-  Website:                    https://github.com/peass-ng/PEASS-ng
-
-  TESTED: PoSh 5,7
-  UNTESTED: PoSh 3,4
-  NOT FULLY COMPATIBLE: PoSh 2 or lower
+  Version:                    1.0
+  PEASS-ng Original Author:   ERWTJES
+  erwtje.ps1 Author:         @klatifi
+  Creation Date:              7/9/2026
+  Website:                    https://github.com/klatifi/erwtjes
 #>
 
 ######################## FUNCTIONS ########################
